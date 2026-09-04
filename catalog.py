@@ -168,9 +168,26 @@ def get(product_id: str) -> dict | None:
         out.setdefault(f"spec.{s['key']}", {"value": s["value"], "source": f"{crawl_src}:specs_parsed", "as_of": crawl_ts})
     conf = [dict(x) for x in c.execute("SELECT field, values_json FROM conflicts WHERE product_id=?", (product_id,))]
     c.close()
-    fields = {k: v for k, v in out.items() if v is not None}
-    return {"fields": fields, "sellable": e["ok"], "unsellable_reason": e["reason"],
-            "conflicts": [{"field": x["field"], "values": json.loads(x["values_json"])} for x in conf]}
+    conflicts = [{"field": x["field"], "values": json.loads(x["values_json"])} for x in conf]
+    contested = {x["field"] for x in conflicts}
+    # invariant: a field whose sources disagree is never served as a value
+    fields = {k: v for k, v in out.items() if v is not None and k not in contested}
+    return {"fields": fields, "sellable": e["ok"], "unsellable_reason": e["reason"], "conflicts": conflicts}
+
+
+def verify_claim(product_id: str, field: str, expected) -> dict:
+    """Ground a buyer's claim against the record. Verdicts: MATCH, MISMATCH, UNKNOWN, CONFLICT, UNKNOWN_PRODUCT.
+    Never answers from name or description; only from a stored field."""
+    p = get(product_id)
+    if p is None:
+        return {"verdict": "UNKNOWN_PRODUCT", "evidence": None}
+    if any(c["field"] == field for c in p["conflicts"]):
+        return {"verdict": "CONFLICT", "evidence": next(c for c in p["conflicts"] if c["field"] == field)}
+    f = p["fields"].get(field)
+    if f is None:
+        return {"verdict": "UNKNOWN", "evidence": None}
+    a, b = str(f["value"]).strip().lower(), str(expected).strip().lower()
+    return {"verdict": "MATCH" if a == b else "MISMATCH", "evidence": f}
 
 
 def search(q: str, limit: int = 20) -> list[dict]:

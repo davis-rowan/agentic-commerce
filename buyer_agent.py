@@ -70,6 +70,9 @@ if not chosen:
     chosen = min(affordable, key=lambda t: t[1]["sell_price_paise"]["value"])
 pid, f = chosen
 print(f"  chosen {pid}: {f['name']['value'][:60]}")
+# Ground before acting (ShoppingComp: couple entity grounding with constraint verification)
+st, v = call("POST", "/verify", {"product_id": pid, "field": "sell_price_paise", "expected": f["sell_price_paise"]["value"]})
+print(f"  grounded claim sell_price={f['sell_price_paise']['value']} -> {v['verdict']} (source {v['evidence']['source']})")
 print(f"    sell price ₹{f['sell_price_paise']['value']/100:.2f}  source={f['sell_price_paise']['source']}  as_of={f['sell_price_paise']['as_of'][:10]}")
 print(f"    list price {'₹%.2f' % (f['list_price_paise']['value']/100) if 'list_price_paise' in f else 'unknown'} (informational only, never used for amount)")
 print(f"    color={f['spec.color']['value'] if 'spec.color' in f else 'unknown (human waived)'}  stock={f['stock']['value']} ({f['stock']['source']})")
@@ -84,7 +87,13 @@ print(f"  mandate {m['mandate']['mandate_id']}: per-txn ₹{caps['max_per_txn_pa
 st, q = call("POST", "/quote", {"product_id": pid, "qty": 1})
 print(f"  quote {q['quote']['quote_id']}: amount ₹{q['quote']['amount_paise']/100:.2f} from {q['quote']['price_source']}, 120 s TTL")
 st, b = call("POST", "/checkout", {"quote_token": q["quote_token"], "mandate_token": mandate_tok}, {"X-Agent-Id": AGENT})
-print(f"  HTTP {st}: {json.dumps(b)[:200]}")
+print(f"  HTTP {st}: {b.get('decision')} order={b.get('razorpay_order_id')} mode={b.get('razorpay_mode')} decision_hash={b.get('envelope', {}).get('decision_hash', '')[:12]}…")
+order_id, mode = b.get("razorpay_order_id"), b.get("razorpay_mode")
+if mode == "stub":
+    st, pay = call("POST", "/payment/verify", {"razorpay_order_id": order_id, "razorpay_payment_id": "pay_STUB" + order_id[-6:], "razorpay_signature": "stub"})
+    print(f"  payment (simulated, stub mode): {pay.get('decision')}")
+else:
+    print(f"  payment: a HUMAN completes Razorpay Checkout for {order_id} in the dashboard (AP2 payment mandate, human present); the agent cannot pay by itself")
 
 # ---- Scene 3: stale price -> refused -> merchant confirms -> quote ok ----
 scene(3, "stale-price product: refused until a human on the merchant side confirms")

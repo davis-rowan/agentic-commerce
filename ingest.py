@@ -128,18 +128,28 @@ def main():
     # --- normalise: keep latest crawl per pid ---
     latest = df.sort_values("_ts", ascending=False).drop_duplicates("pid")
     products, specs = [], []
+    brand_conflicts = 0
     for row in latest.itertuples(index=False):
         sp, _ = parse_specs(row.product_specifications)
         pid = row.pid
+        brand = None if pd.isna(row.brand) else str(row.brand).strip()
+        spec_brand = sp.get("brand")
+        if brand and spec_brand and brand.lower() != spec_brand.lower():
+            # two sources disagree: serve neither, record the conflict (agents must not pick one silently)
+            conflicts.append((pid, "brand", json.dumps([brand, spec_brand])))
+            brand_conflicts += 1
+            brand = None
+            sp.pop("brand")
         products.append({
             "product_id": pid, "uniq_id": row.uniq_id, "name": row.product_name,
-            "brand": None if pd.isna(row.brand) else row.brand, "category": category_path(row.product_category_tree),
+            "brand": brand, "category": category_path(row.product_category_tree),
             "list_price_paise": to_paise(row.retail_price), "sell_price_paise": to_paise(row.discounted_price),
             "price_as_of": to_iso(row.crawl_timestamp), "description": None if pd.isna(row.description) else row.description,
             "rating": None if pd.isna(rn := pd.to_numeric(row.product_rating, errors="coerce")) else float(rn),
             "price_conflict": 1 if pid in conflict_pids else 0, "crawl_ts": to_iso(row.crawl_timestamp),
         })
         specs.extend((pid, k, v) for k, v in sp.items())
+    report["duplicates"]["brand_column_vs_spec_brand_conflicts"] = brand_conflicts
     catalog.build(products, specs, conflicts)
     cov_raw = catalog.coverage()
 
@@ -171,7 +181,7 @@ def main():
           f"price age days median: {report['price']['age_days']['median']}")
     print(f"specs: {report['specs']}")
     print(f"rating non-numeric: {report['rating_non_numeric']}   brand blank: {report['brand_blank']}   "
-          f"dup rows: {dup_rows}   conflicting-price pids: {len(conflict_pids)}")
+          f"dup rows: {dup_rows}   conflicting-price pids: {len(conflict_pids)}   brand column vs spec conflicts: {brand_conflicts}")
     for k in ("raw_crawl_only", "after_price_confirmations", "after_stock_snapshot"):
         c = report["coverage"][k]
         print(f"sellable {k:28s}: {c['sellable']:5d} / {c['total']} ({c['sellable_pct']}%)  {c['unsellable_by_reason']}")

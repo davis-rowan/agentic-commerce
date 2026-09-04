@@ -41,7 +41,8 @@ def client():
     catalog.build([
         _p("ok"), _p("noprice", sell_price_paise=None), _p("stale", price_as_of=STALE),
         _p("conflict", price_conflict=1), _p("nostock"), _p("zero"), _p("blue", name="Blue Bottle"),
-    ], [("ok", "color", "red"), ("blue", "color", "blue")], [("conflict", "sell_price_paise", json.dumps([90000, 100000]))])
+    ], [("ok", "color", "red"), ("blue", "color", "blue")],
+       [("conflict", "sell_price_paise", json.dumps([90000, 100000])), ("conflict", "brand", json.dumps(["Acme", "ACME Ltd"]))])
     catalog.add_stock([("ok", 5, "t", FRESH), ("stale", 5, "t", FRESH), ("conflict", 5, "t", FRESH), ("zero", 0, "t", FRESH), ("blue", 3, "t", FRESH)])
     from fastapi.testclient import TestClient
     import merchant
@@ -105,6 +106,43 @@ def test_checkout_tamper_and_mandate(client):
     assert r.json()["detail"]["rule"] == "REFUSED_MANDATE_DAILY" and r.json()["detail"]["escalated_to_human"] is True
     assert client.post("/checkout", json={"quote_token": tok2, "mandate_token": m}).status_code == 401
     assert client.post("/checkout", json={"quote_token": tok2, "mandate_token": m}, headers={"X-Agent-Id": "someone-else"}).json()["detail"]["rule"] == "REFUSED_MANDATE_AGENT_MISMATCH"
+
+
+def test_verify_claim_grounds_attributes(client):
+    v = lambda pid, field, exp: client.post("/verify", json={"product_id": pid, "field": field, "expected": exp}).json()["verdict"]
+    assert v("blue", "spec.color", "Blue") == "MATCH"
+    assert v("blue", "spec.color", "red") == "MISMATCH"
+    assert v("nostock", "spec.color", "blue") == "UNKNOWN"      # title says nothing; no spec on record
+    assert v("ghost", "spec.color", "blue") == "UNKNOWN_PRODUCT"
+    assert v("conflict", "brand", "Acme") == "CONFLICT"
+    assert client.post("/ask", json={"product_id": "conflict", "field": "brand"}).json()["answer"] == "unknown"
+
+
+def test_checkout_revalidates_live_state(client):
+    m = _mandate(client, agent="a3")
+    tok = client.post("/quote", json={"product_id": "blue", "qty": 1}).json()["quote_token"]
+    client.post("/merchant/confirm_price", json={"product_id": "blue", "sell_price_paise": 95000}, headers={"X-Merchant-Key": "demo-merchant"})
+    r = client.post("/checkout", json={"quote_token": tok, "mandate_token": m}, headers={"X-Agent-Id": "a3"})
+    assert r.status_code == 409 and r.json()["detail"]["rule"] == "REFUSED_REQUIRES_REVALIDATION"
+    assert "price changed" in r.json()["detail"]["reason"]
+    env = r.json()["detail"]["envelope"]
+    assert env["decision"] == "REFUSED" and len(env["evidence_hash"]) == 64 and len(env["decision_hash"]) == 64
+
+
+def test_payment_verify_stub_flow(client):
+    m = _mandate(client, agent="a4")
+    tok = client.post("/quote", json={"product_id": "ok", "qty": 1}).json()["quote_token"]
+    order = client.post("/checkout", json={"quote_token": tok, "mandate_token": m}, headers={"X-Agent-Id": "a4"}).json()
+    assert order["envelope"]["decision"] == "APPROVED"
+    oid = order["razorpay_order_id"]
+    bad = client.post("/payment/verify", json={"razorpay_order_id": oid, "razorpay_payment_id": "pay_real", "razorpay_signature": "x"})
+    assert bad.json()["detail"]["rule"] == "REFUSED_PAYMENT_SIGNATURE"
+    unknown = client.post("/payment/verify", json={"razorpay_order_id": "order_nope", "razorpay_payment_id": "pay_STUB1", "razorpay_signature": "x"})
+    assert unknown.status_code == 404
+    ok = client.post("/payment/verify", json={"razorpay_order_id": oid, "razorpay_payment_id": "pay_STUB1", "razorpay_signature": "stub"}).json()
+    assert ok["decision"] == "PAID" and ok["ap2_role"] == "payment_mandate"
+    stages = {r["step"]: r["request"]["stage"] for r in ledger.rows()}
+    assert stages["checkout"] == "submit" and stages["payment"] == "execute" and stages["verify"] == "ground"
 
 
 def test_ledger_concurrent_appends_keep_chain(client):

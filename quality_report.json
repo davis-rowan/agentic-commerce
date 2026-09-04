@@ -92,7 +92,8 @@
   "duplicates": {
     "duplicate_rows": 2,
     "unique_pids": 19998,
-    "pids_with_conflicting_price": 0
+    "pids_with_conflicting_price": 0,
+    "brand_column_vs_spec_brand_conflicts": 105
   },
   "coverage": {
     "raw_crawl_only": {
@@ -127,5 +128,5 @@
     },
     "note": "price_confirmations.csv and stock_snapshot.csv are simulated stand-ins for the ERP/WMS feeds a real merchant must supply"
   },
-  "generated_at": "2026-09-04T16:40:21.075793+00:00"
+  "generated_at": "2026-09-04T17:12:45.004900+00:00"
 }
