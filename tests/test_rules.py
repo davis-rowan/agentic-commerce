@@ -107,6 +107,13 @@ def test_checkout_tamper_and_mandate(client):
     assert client.post("/checkout", json={"quote_token": tok2, "mandate_token": m}, headers={"X-Agent-Id": "someone-else"}).json()["detail"]["rule"] == "REFUSED_MANDATE_AGENT_MISMATCH"
 
 
+def test_ledger_concurrent_appends_keep_chain(client):
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(16) as ex:
+        list(ex.map(lambda i: ledger.append("t", {"i": i}, "R", "OK"), range(120)))
+    assert ledger.verify()["ok"] is True
+
+
 def test_ledger_chain(client):
     assert ledger.verify()["ok"] is True
     import sqlite3

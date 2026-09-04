@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,24 +31,30 @@ def _digest(row: dict) -> str:
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
+_LOCK = threading.Lock()  # appends must be serial: read head -> hash -> insert is one atomic step
+
+
 def append(step: str, request: dict, rule_fired: str, decision: str, razorpay_ref: str | None = None) -> dict:
-    c = _conn()
-    last = c.execute("SELECT hash FROM ledger ORDER BY seq DESC LIMIT 1").fetchone()
-    row = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "step": step,
-        "request": json.dumps(request, sort_keys=True),
-        "rule_fired": rule_fired,
-        "decision": decision,
-        "razorpay_ref": razorpay_ref,
-        "prev_hash": last[0] if last else GENESIS,
-    }
-    row["hash"] = _digest(row)
-    c.execute(f"INSERT INTO ledger({','.join(COLS)}) VALUES({','.join('?' * len(COLS))})", [row[k] for k in COLS])
-    c.commit()
-    seq = c.execute("SELECT last_insert_rowid()").fetchone()[0]
-    c.close()
-    return {"seq": seq, **row}
+    with _LOCK:
+        c = _conn()
+        c.isolation_level = None  # manual transaction control
+        c.execute("BEGIN IMMEDIATE")  # also serialises against other processes
+        last = c.execute("SELECT hash FROM ledger ORDER BY seq DESC LIMIT 1").fetchone()
+        row = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "step": step,
+            "request": json.dumps(request, sort_keys=True),
+            "rule_fired": rule_fired,
+            "decision": decision,
+            "razorpay_ref": razorpay_ref,
+            "prev_hash": last[0] if last else GENESIS,
+        }
+        row["hash"] = _digest(row)
+        c.execute(f"INSERT INTO ledger({','.join(COLS)}) VALUES({','.join('?' * len(COLS))})", [row[k] for k in COLS])
+        seq = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        c.execute("COMMIT")
+        c.close()
+        return {"seq": seq, **row}
 
 
 def rows() -> list[dict]:
