@@ -1,0 +1,4 @@
+.env
+ledger.db
+__pycache__/
+*.pyc
