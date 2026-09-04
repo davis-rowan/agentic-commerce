@@ -22,10 +22,14 @@ This merchant only answers in verifiable form.
 
 ## Run
 ```
-pip install -r requirements.txt
-uvicorn merchant:app --reload
-python buyer_agent.py
+python -m pip install -r requirements.txt
+copy .env.example .env        # then paste your Razorpay test keys
+python -m uvicorn merchant:app --reload
+python buyer_agent.py         # or open http://127.0.0.1:8000 and press "Run demo"
 ```
+The root URL serves a live dashboard: catalog with unknown fields, a one-click demo runner,
+and the hash-chained ledger with its verification status.
+
 Paste your Razorpay **test** keys into `.env`. Until you do, checkout runs in a clearly labelled
 `stub` mode and fabricates order ids locally. With real keys, `razorpay_mode` becomes
 `razorpay_test` and the order appears in your Razorpay test dashboard.
@@ -50,6 +54,7 @@ To show tamper detection on the log itself, edit any row in `ledger.db` and call
 | `ledger.py` | Hash-chained append-only log + verifier + daily spend query |
 | `catalog.json` | Six products, some fields deliberately missing |
 | `buyer_agent.py` | Scripted buyer running the demo scenes |
+| `dashboard.html` | Served at `/`: live catalog, in-browser demo runner, ledger view |
 
 ## Out of scope
 Payment capture and webhooks, multi-merchant, an LLM-driven buyer, auth beyond HMAC mandates.
