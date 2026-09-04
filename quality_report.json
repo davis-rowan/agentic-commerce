@@ -1,0 +1,131 @@
+{
+  "dataset": "PromptCloudHQ/flipkart-products",
+  "file": "flipkart_com-ecommerce_sample.csv",
+  "rows": 20000,
+  "null_pct": {
+    "uniq_id": 0.0,
+    "crawl_timestamp": 0.0,
+    "product_url": 0.0,
+    "product_name": 0.0,
+    "product_category_tree": 0.0,
+    "pid": 0.0,
+    "retail_price": 0.39,
+    "discounted_price": 0.39,
+    "image": 0.01,
+    "is_FK_Advantage_product": 0.0,
+    "description": 0.01,
+    "product_rating": 0.0,
+    "overall_rating": 0.0,
+    "brand": 29.32,
+    "product_specifications": 0.07
+  },
+  "price": {
+    "missing_list_price": 78,
+    "missing_sell_price": 78,
+    "sell_price_gt_list_price": 0,
+    "rows_where_two_prices_differ": 17635,
+    "age_days": {
+      "min": 3720,
+      "median": 3900,
+      "max": 3930
+    }
+  },
+  "specs": {
+    "ok": 19900,
+    "unparsable": 53,
+    "empty": 33,
+    "blank": 14,
+    "distinct_keys_after_normalisation": 2125,
+    "top_keys": [
+      [
+        "type",
+        13630
+      ],
+      [
+        "ideal_for",
+        13198
+      ],
+      [
+        "color",
+        10831
+      ],
+      [
+        "occasion",
+        9954
+      ],
+      [
+        "brand",
+        9279
+      ],
+      [
+        "number_of_contents_in_sales_package",
+        7282
+      ],
+      [
+        "sales_package",
+        6730
+      ],
+      [
+        "model_number",
+        6374
+      ],
+      [
+        "fabric",
+        6249
+      ],
+      [
+        "pattern",
+        6240
+      ],
+      [
+        "model",
+        5192
+      ],
+      [
+        "pack_of",
+        4937
+      ]
+    ]
+  },
+  "rating_non_numeric": 18151,
+  "brand_blank": 5864,
+  "duplicates": {
+    "duplicate_rows": 2,
+    "unique_pids": 19998,
+    "pids_with_conflicting_price": 0
+  },
+  "coverage": {
+    "raw_crawl_only": {
+      "total": 19998,
+      "sellable": 0,
+      "sellable_pct": 0.0,
+      "unsellable_by_reason": {
+        "PRICE_STALE": 19920,
+        "NO_PRICE": 78
+      }
+    },
+    "after_price_confirmations": {
+      "total": 19998,
+      "sellable": 0,
+      "sellable_pct": 0.0,
+      "unsellable_by_reason": {
+        "PRICE_STALE": 14940,
+        "NO_STOCK": 4980,
+        "NO_PRICE": 78
+      }
+    },
+    "after_stock_snapshot": {
+      "total": 19998,
+      "sellable": 2878,
+      "sellable_pct": 14.39,
+      "unsellable_by_reason": {
+        "PRICE_STALE": 14940,
+        "NO_STOCK": 1786,
+        "OUT_OF_STOCK": 316,
+        "NO_PRICE": 78
+      }
+    },
+    "note": "price_confirmations.csv and stock_snapshot.csv are simulated stand-ins for the ERP/WMS feeds a real merchant must supply"
+  },
+  "generated_at": "2026-09-04T16:40:21.075793+00:00"
+}

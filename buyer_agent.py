@@ -42,6 +42,7 @@ _, s = call("GET", "/search?" + urllib.parse.urlencode({"q": INTENT["want"], "li
 print(f"  search returned {len(s['hits'])} real product ids (matched_on reported per hit)")
 chosen = None
 dropped = {}
+affordable = []  # sellable and within budget, regardless of the must-field
 for h in s["hits"]:
     _, p = call("GET", f"/product/{h['product_id']}")
     f = p["fields"]
@@ -51,28 +52,35 @@ for h in s["hits"]:
     if f["sell_price_paise"]["value"] > INTENT["max_paise"]:
         dropped["OVER_BUDGET"] = dropped.get("OVER_BUDGET", 0) + 1
         continue
+    affordable.append((h["product_id"], f))
     missing = [k for k in INTENT["must"] if k not in f]
     if missing:
         dropped["MUST_FIELD_UNKNOWN"] = dropped.get("MUST_FIELD_UNKNOWN", 0) + 1
         continue  # NOT assumed: an agent that guessed here would count an assumptive decision
-    chosen = (h["product_id"], f)
-    break
+    if chosen is None:
+        chosen = (h["product_id"], f)
 print(f"  dropped: {dropped}")
 if not chosen:
-    escalate("no candidate has every required field on record; asking the human instead of guessing")
-    print(f"\nSTATS {STATS}")
-    sys.exit(0)
+    escalate(f"{len(affordable)} affordable candidates but none has colour on record; asking the human instead of guessing")
+    if not affordable:
+        print(f"\nSTATS {STATS}")
+        sys.exit(0)
+    print("  HUMAN: colour does not matter, take the cheapest one that is fully sellable")
+    INTENT["must"] = {}
+    chosen = min(affordable, key=lambda t: t[1]["sell_price_paise"]["value"])
 pid, f = chosen
 print(f"  chosen {pid}: {f['name']['value'][:60]}")
 print(f"    sell price ₹{f['sell_price_paise']['value']/100:.2f}  source={f['sell_price_paise']['source']}  as_of={f['sell_price_paise']['as_of'][:10]}")
 print(f"    list price {'₹%.2f' % (f['list_price_paise']['value']/100) if 'list_price_paise' in f else 'unknown'} (informational only, never used for amount)")
-print(f"    color={f['spec.color']['value']}  stock={f['stock']['value']} ({f['stock']['source']})")
+print(f"    color={f['spec.color']['value'] if 'spec.color' in f else 'unknown (human waived)'}  stock={f['stock']['value']} ({f['stock']['source']})")
 
 # ---- Scene 2: mandate -> quote -> checkout ----
 scene(2, "mandate + signed quote + checkout")
-_, m = call("POST", "/mandate", {"agent_id": AGENT, "max_per_txn_paise": 150000, "max_per_day_paise": 200000})
+amount = f["sell_price_paise"]["value"]
+caps = {"max_per_txn_paise": amount + 50000, "max_per_day_paise": int(amount * 1.5)}  # one buy fits, a second does not
+_, m = call("POST", "/mandate", {"agent_id": AGENT, **caps})
 mandate_tok = m["mandate_token"]
-print(f"  mandate {m['mandate']['mandate_id']}: per-txn 1500.00, daily 2000.00")
+print(f"  mandate {m['mandate']['mandate_id']}: per-txn ₹{caps['max_per_txn_paise']/100:.2f}, daily ₹{caps['max_per_day_paise']/100:.2f}")
 st, q = call("POST", "/quote", {"product_id": pid, "qty": 1})
 print(f"  quote {q['quote']['quote_id']}: amount ₹{q['quote']['amount_paise']/100:.2f} from {q['quote']['price_source']}, 120 s TTL")
 st, b = call("POST", "/checkout", {"quote_token": q["quote_token"], "mandate_token": mandate_tok}, {"X-Agent-Id": AGENT})

@@ -105,12 +105,11 @@ def _decide(sell_price, conflict, price_as_of, confirmed, qty):
     return True, None
 
 
-_EFFECTIVE_SQL = """
-SELECT p.*, c.sell_price_paise AS c_price, c.source AS c_source, c.as_of AS c_as_of,
-       s.qty AS s_qty, s.source AS s_source, s.as_of AS s_as_of
+_LATEST = "(SELECT {col} FROM confirmations c WHERE c.product_id = p.product_id ORDER BY c.id DESC LIMIT 1)"
+_EFFECTIVE_SQL = f"""
+SELECT p.*, {_LATEST.format(col='sell_price_paise')} AS c_price, {_LATEST.format(col='source')} AS c_source,
+       {_LATEST.format(col='as_of')} AS c_as_of, s.qty AS s_qty, s.source AS s_source, s.as_of AS s_as_of
 FROM products p
-LEFT JOIN (SELECT product_id, sell_price_paise, source, as_of FROM confirmations
-           WHERE id IN (SELECT MAX(id) FROM confirmations GROUP BY product_id)) c ON c.product_id = p.product_id
 LEFT JOIN stock s ON s.product_id = p.product_id
 """
 

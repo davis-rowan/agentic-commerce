@@ -143,21 +143,29 @@ async function runDemo(){
   log(`=== 1. intent: "${want}" under ₹${inr(budget)}, color must be KNOWN ===`, 'b');
   const [,S] = await j('GET','/search?q='+encodeURIComponent(want)+'&limit=40');
   log(`  search → ${S.hits.length} real ids`);
-  let chosen=null, stalePid=null, stalePrice=0; const dropped={};
+  let chosen=null, stalePid=null, stalePrice=0; const dropped={}, affordable=[];
   for (const h of S.hits) {
     const [,p] = await j('GET','/product/'+h.product_id); const f=p.fields;
     if (!p.sellable) { dropped[p.unsellable_reason]=(dropped[p.unsellable_reason]||0)+1; if(!stalePid && p.unsellable_reason==='PRICE_STALE'){stalePid=h.product_id; stalePrice=f.sell_price_paise.value;} continue; }
     if (f.sell_price_paise.value > budget) { dropped.OVER_BUDGET=(dropped.OVER_BUDGET||0)+1; continue; }
+    affordable.push([h.product_id,f]);
     if (!f['spec.color']) { dropped.MUST_FIELD_UNKNOWN=(dropped.MUST_FIELD_UNKNOWN||0)+1; continue; }
-    chosen=[h.product_id,f]; break;
+    if (!chosen) chosen=[h.product_id,f];
   }
   log(`  dropped: ${JSON.stringify(dropped)}`, 'y');
-  if (!chosen) { stats.escalations++; log('  ESCALATE: nothing fully known within budget; asking the human instead of guessing', 'r'); log(`STATS ${JSON.stringify(stats)}`); $('#run').disabled=false; return; }
+  if (!chosen) {
+    stats.escalations++; log(`  ESCALATE: ${affordable.length} affordable candidates but none has colour on record; asking the human instead of guessing`, 'r');
+    if (!affordable.length) { log(`STATS ${JSON.stringify(stats)}`); $('#run').disabled=false; return; }
+    log('  HUMAN: colour does not matter, take the cheapest fully sellable one', 'y');
+    chosen = affordable.reduce((a,b) => a[1].sell_price_paise.value <= b[1].sell_price_paise.value ? a : b);
+  }
   const [pid,f]=chosen;
   log(`  chosen ${pid}: ${f.name.value.slice(0,60)}`, 'g');
-  log(`    sell ₹${inr(f.sell_price_paise.value)} (${f.sell_price_paise.source} @ ${f.sell_price_paise.as_of.slice(0,10)})  list ${f.list_price_paise?'₹'+inr(f.list_price_paise.value):'unknown'} (informational)  color ${f['spec.color'].value}  stock ${f.stock.value}`);
+  log(`    sell ₹${inr(f.sell_price_paise.value)} (${f.sell_price_paise.source} @ ${f.sell_price_paise.as_of.slice(0,10)})  list ${f.list_price_paise?'₹'+inr(f.list_price_paise.value):'unknown'} (informational)  color ${f['spec.color']?f['spec.color'].value:'unknown (human waived)'}  stock ${f.stock.value}`);
   log('=== 2. mandate + signed quote + checkout ===', 'b');
-  const [,m] = await j('POST','/mandate',{agent_id:AGENT,max_per_txn_paise:150000,max_per_day_paise:200000});
+  const amt = f.sell_price_paise.value, caps = {max_per_txn_paise: amt + 50000, max_per_day_paise: Math.floor(amt * 1.5)};
+  log(`  mandate: per-txn ₹${inr(caps.max_per_txn_paise)}, daily ₹${inr(caps.max_per_day_paise)} (one buy fits, a second does not)`);
+  const [,m] = await j('POST','/mandate',{agent_id:AGENT,...caps});
   const [,q] = await j('POST','/quote',{product_id:pid,qty:1});
   let [s,b] = await j('POST','/checkout',{quote_token:q.quote_token,mandate_token:m.mandate_token},{'X-Agent-Id':AGENT});
   log(s===200 ? `  APPROVED → ${b.razorpay_order_id} (${b.razorpay_mode}) ₹${inr(b.amount_paise)}` : `  ${JSON.stringify(b.detail)}`, s===200?'g':'r');
