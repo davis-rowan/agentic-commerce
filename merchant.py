@@ -17,6 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import ledger
@@ -57,6 +58,11 @@ def verify_token(token: str) -> dict | None:
     if not hmac.compare_digest(mac, expected):
         return None
     return json.loads(_unb64(body))
+
+
+@app.get("/", include_in_schema=False)
+def dashboard():
+    return FileResponse(Path(__file__).with_name("dashboard.html"))
 
 
 # ---------- catalog: answer only what we know ----------
