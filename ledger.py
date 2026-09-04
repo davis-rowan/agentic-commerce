@@ -5,11 +5,12 @@ verify() recomputes the chain and reports the first broken link, if any.
 """
 import hashlib
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB = Path(__file__).with_name("ledger.db")
+DB = Path(os.environ.get("LEDGER_DB", Path(__file__).with_name("ledger.db")))
 GENESIS = "0" * 64
 COLS = ["ts", "step", "request", "rule_fired", "decision", "razorpay_ref", "prev_hash", "hash"]
 

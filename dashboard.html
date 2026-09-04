@@ -12,48 +12,64 @@
   h1 { margin:0; font-size:22px } header .sub { color:var(--mute) }
   main { padding:8px 28px 40px; display:grid; gap:16px; grid-template-columns: 1fr 1fr }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px }
-  .card h2 { margin:0 0 10px; font-size:15px }
+  .card h2 { margin:0 0 10px; font-size:15px } .card p.d { margin:0 0 10px; color:var(--mute) }
   .full { grid-column:1 / -1 }
-  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px }
+  .tiles { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:14px }
   .tile { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px }
   .tile .k { color:var(--mute); font-size:12px } .tile .v { font-size:20px; font-weight:600; margin-top:2px }
-  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; font-weight:600 }
+  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; font-weight:600; white-space:nowrap }
   .ok { background:#e6f4ec; color:var(--ok) } .bad { background:#fbe9e7; color:var(--bad) } .warn { background:#fff3e0; color:var(--warn) } .info { background:#e8eeff; color:var(--acc) }
   table { width:100%; border-collapse:collapse; font-size:13px } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top }
-  th { color:var(--mute); font-weight:600; font-size:12px } td.mono, .mono { font-family:ui-monospace, Consolas, monospace; font-size:12px }
-  .wrap { overflow-x:auto }
+  th { color:var(--mute); font-weight:600; font-size:12px } .mono { font-family:ui-monospace, Consolas, monospace; font-size:12px }
+  .wrap { overflow-x:auto; max-height:420px; overflow-y:auto }
   button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:9px 14px; font-weight:600; cursor:pointer } button:disabled { opacity:.5 }
-  #log { background:#0f1218; color:#d7dde7; border-radius:8px; padding:12px; font-family:ui-monospace, Consolas, monospace; font-size:12px; min-height:180px; max-height:340px; overflow:auto; white-space:pre-wrap }
+  input[type=text] { padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:60%; font:inherit }
+  #log { background:#0f1218; color:#d7dde7; border-radius:8px; padding:12px; font-family:ui-monospace, Consolas, monospace; font-size:12px; min-height:180px; max-height:360px; overflow:auto; white-space:pre-wrap }
   .g { color:#7ee2a8 } .r { color:#ff8a80 } .y { color:#ffd54f } .b { color:#8ab4ff }
   .unk { color:var(--mute); font-style:italic }
-  @media (max-width:900px){ main { grid-template-columns:1fr } .tiles { grid-template-columns:repeat(2,1fr) } }
+  .bar { height:10px; background:#eceff3; border-radius:6px; overflow:hidden; margin:4px 0 10px } .bar i { display:block; height:100%; background:var(--ok) }
+  .prob { display:grid; grid-template-columns: 1fr auto; gap:4px 14px; font-size:13px } .prob b { font-weight:600 }
+  @media (max-width:1000px){ main { grid-template-columns:1fr } .tiles { grid-template-columns:repeat(2,1fr) } }
 </style>
 </head>
 <body>
 <header>
-  <h1>Verifiable Storefront</h1>
+  <h1>Verifiable Storefront <span class="badge info">v2 · Flipkart 20k</span></h1>
   <span class="sub">Every answer sourced, every price signed, every rupee mandated, every step chained.</span>
   <span id="mode" class="badge info">mode: …</span>
 </header>
 <main>
   <div class="tiles full">
+    <div class="tile"><div class="k">Products on record</div><div class="v" id="t-total">–</div></div>
+    <div class="tile"><div class="k">Sellable to an AI buyer</div><div class="v" id="t-sell">–</div></div>
     <div class="tile"><div class="k">Ledger rows</div><div class="v" id="t-rows">–</div></div>
     <div class="tile"><div class="k">Chain integrity</div><div class="v" id="t-chain">–</div></div>
-    <div class="tile"><div class="k">Approved today (₹)</div><div class="v" id="t-spent">–</div></div>
     <div class="tile"><div class="k">Refusals / escalations</div><div class="v" id="t-ref">–</div></div>
   </div>
 
   <section class="card">
+    <h2>What the raw data looked like</h2>
+    <p class="d">Measured by <span class="mono">ingest.py</span> on the Kaggle CSV. Each problem maps to a merchant rule, not a guess.</p>
+    <div id="problems" class="prob">loading…</div>
+  </section>
+
+  <section class="card">
+    <h2>Sellable coverage as sources are added</h2>
+    <p class="d">Crawl alone sells nothing: prices are years old and there is no stock column. Each extra source is labelled in every field it touches.</p>
+    <div id="coverage">loading…</div>
+  </section>
+
+  <section class="card">
     <h2>Buyer agent demo</h2>
-    <p style="margin:0 0 10px;color:var(--mute)">Runs the five scenes from <span class="mono">buyer_agent.py</span> against this server, live.</p>
-    <button id="run">Run demo</button>
-    <button id="reset" style="background:#5b6472;margin-left:6px">Clear log</button>
+    <p class="d">Intent → deterministic search → filter on known fields only → mandate → signed quote → Razorpay. Assumptive decisions must stay 0.</p>
+    <button id="run">Run demo</button> <button id="clear" style="background:#5b6472">Clear</button>
     <div id="log" style="margin-top:10px">Press “Run demo”.</div>
   </section>
 
   <section class="card">
-    <h2>Catalog (fields carry source + as_of; absent = unknown)</h2>
-    <div class="wrap"><table id="cat"><thead><tr><th>SKU</th><th>Name</th><th>Price</th><th>Warranty</th><th>Weight</th><th>Color</th><th>Stock</th></tr></thead><tbody></tbody></table></div>
+    <h2>Search (substring on name / brand / category, nothing inferred)</h2>
+    <input type="text" id="q" placeholder="e.g. water bottle" value="water bottle"> <button id="go">Search</button>
+    <div class="wrap" style="margin-top:10px"><table id="res"><thead><tr><th>Product</th><th>Sell price</th><th>List</th><th>Color</th><th>Stock</th><th>Sellable?</th><th>matched_on</th></tr></thead><tbody></tbody></table></div>
   </section>
 
   <section class="card full">
@@ -66,28 +82,51 @@
 const $ = s => document.querySelector(s);
 const j = async (m, p, b, h) => { const r = await fetch(p, {method:m, headers:{'Content-Type':'application/json', ...(h||{})}, body:b?JSON.stringify(b):undefined}); return [r.status, await r.json()]; };
 const inr = p => (p/100).toLocaleString('en-IN', {maximumFractionDigits:2});
-const cell = f => f ? `<span title="${f.source} @ ${f.as_of}">${f.value}</span>` : `<span class="unk">unknown</span>`;
+const unk = '<span class="unk">unknown</span>';
+const cell = f => f ? `<span title="${f.source} @ ${f.as_of}">${f.value}</span>` : unk;
+const price = f => f ? `<span title="${f.source} @ ${f.as_of}">₹${inr(f.value)}</span>` : unk;
+const sellBadge = p => p.sellable ? '<span class="badge ok">yes</span>' : `<span class="badge bad">${p.unsellable_reason}</span>`;
 
-async function loadCatalog(){
-  const [,c] = await j('GET','/catalog');
-  $('#cat tbody').innerHTML = Object.entries(c.products).map(([id,p]) =>
-    `<tr><td class="mono">${id}</td><td>${cell(p.name)}</td><td>${p.price_paise?'₹'+inr(p.price_paise.value):'<span class="unk">unknown</span>'}</td><td>${cell(p.warranty_months)}</td><td>${cell(p.weight_g)}</td><td>${cell(p.color)}</td><td>${cell(p.stock)}</td></tr>`).join('');
+async function loadQuality(){
+  const [,Q] = await j('GET','/quality'); const R = Q.report;
+  if (R.error) { $('#problems').textContent = R.error; $('#coverage').textContent = R.error; return; }
+  const rows = [
+    ['Rows / unique pids', `${R.rows} / ${R.duplicates.unique_pids}`],
+    ['Rows with two different prices (retail vs discounted)', R.price.rows_where_two_prices_differ],
+    ['Missing sell price', R.price.missing_sell_price],
+    ['Price age in days (median / max)', `${R.price.age_days.median} / ${R.price.age_days.max}`],
+    ['Duplicate rows / pids with conflicting price', `${R.duplicates.duplicate_rows} / ${R.duplicates.pids_with_conflicting_price}`],
+    ['Specs parsed ok / empty / blank / unparsable', `${R.specs.ok||0} / ${R.specs.empty||0} / ${R.specs.blank||0} / ${R.specs.unparsable||0}`],
+    ['Distinct spec keys after normalisation', R.specs.distinct_keys_after_normalisation],
+    ['Rating non-numeric ("No rating available")', R.rating_non_numeric],
+    ['Brand blank', R.brand_blank],
+    ['Stock column in dataset', 'none'],
+  ];
+  $('#problems').innerHTML = rows.map(([k,v]) => `<span>${k}</span><b>${v}</b>`).join('');
+  const C = R.coverage;
+  const stage = (label, c) => `<div><span>${label}</span> <b>${c.sellable} / ${c.total} (${c.sellable_pct}%)</b> <span class="mono" style="color:var(--mute)">${Object.entries(c.unsellable_by_reason).map(([k,v])=>k+':'+v).join('  ')}</span></div><div class="bar"><i style="width:${c.sellable_pct}%"></i></div>`;
+  $('#coverage').innerHTML = stage('Crawl only', C.raw_crawl_only) + stage('+ price confirmations (simulated ERP feed)', C.after_price_confirmations) + stage('+ stock snapshot (simulated WMS feed)', C.after_stock_snapshot) + stage('Live now (after merchant confirmations)', Q.live_coverage);
+  $('#t-total').textContent = Q.live_coverage.total.toLocaleString('en-IN');
+  $('#t-sell').textContent = `${Q.live_coverage.sellable.toLocaleString('en-IN')} (${Q.live_coverage.sellable_pct}%)`;
+}
+
+async function doSearch(){
+  const [,S] = await j('GET', '/search?q=' + encodeURIComponent($('#q').value) + '&limit=25');
+  const rows = await Promise.all(S.hits.map(async h => { const [,p] = await j('GET','/product/'+h.product_id); return [h,p]; }));
+  $('#res tbody').innerHTML = rows.map(([h,p]) => { const f=p.fields; return `<tr><td>${(f.name?.value||'').slice(0,50)}<br><span class="mono" style="color:var(--mute)">${h.product_id}</span></td><td>${price(f.sell_price_paise)}</td><td>${price(f.list_price_paise)}</td><td>${cell(f['spec.color'])}</td><td>${cell(f.stock)}</td><td>${sellBadge(p)}</td><td class="mono">${h.matched_on.join(',')}</td></tr>`; }).join('') || '<tr><td colspan=7 class="unk">no matches (and no guesses)</td></tr>';
 }
 
 async function loadLedger(){
-  const [[,L],[,V]] = await Promise.all([j('GET','/ledger'), j('GET','/ledger/verify')]);
+  const [[,L],[,V]] = await Promise.all([j('GET','/ledger?limit=200'), j('GET','/ledger/verify')]);
   const rows = L.rows;
-  $('#t-rows').textContent = rows.length;
+  $('#t-rows').textContent = L.total;
   $('#t-chain').innerHTML = V.ok ? '<span class="badge ok">intact</span>' : `<span class="badge bad">broken @ ${V.broken_at_seq}</span>`;
-  $('#chain-badge').className = 'badge ' + (V.ok?'ok':'bad'); $('#chain-badge').textContent = V.ok ? `verified · head ${V.head.slice(0,10)}…` : `BROKEN at row ${V.broken_at_seq}: ${V.reason}`;
-  const today = new Date().toISOString().slice(0,10);
-  const spent = rows.filter(r=>r.step==='checkout'&&r.decision==='APPROVED'&&r.ts.startsWith(today)).reduce((a,r)=>a+(r.request.amount_paise||0),0);
-  $('#t-spent').textContent = inr(spent);
+  $('#chain-badge').className = 'badge ' + (V.ok?'ok':'bad'); $('#chain-badge').textContent = V.ok ? `verified · ${V.rows} rows · head ${V.head.slice(0,10)}…` : `BROKEN at row ${V.broken_at_seq}: ${V.reason}`;
   const ref = rows.filter(r=>r.decision==='REFUSED').length, esc = rows.filter(r=>r.request.escalate_to_human).length;
   $('#t-ref').textContent = `${ref} / ${esc}`;
   const mode = [...rows].reverse().find(r=>r.request.razorpay_mode);
   if (mode) { $('#mode').textContent = 'razorpay: ' + mode.request.razorpay_mode; $('#mode').className = 'badge ' + (mode.request.razorpay_mode==='razorpay_test'?'ok':'warn'); }
-  const dcls = d => d==='APPROVED'||d==='OK'||d==='ISSUED'||d==='ANSWERED' ? 'ok' : d==='REFUSED'||d==='404' ? 'bad' : 'warn';
+  const dcls = d => ['APPROVED','OK','ISSUED','ANSWERED','APPLIED'].includes(d) || /_HITS$/.test(d) ? 'ok' : (d==='REFUSED'||d==='404') ? 'bad' : 'warn';
   $('#led tbody').innerHTML = [...rows].reverse().map(r =>
     `<tr><td>${r.seq}</td><td class="mono">${r.ts.slice(11,19)}</td><td>${r.step}</td><td class="mono">${r.rule_fired}${r.request.escalate_to_human?' <span class="badge warn">escalated</span>':''}</td><td><span class="badge ${dcls(r.decision)}">${r.decision}</span></td><td class="mono">${r.razorpay_ref||''}</td><td class="mono">${r.prev_hash.slice(0,8)}… → ${r.hash.slice(0,8)}…</td></tr>`).join('');
 }
@@ -95,42 +134,57 @@ async function loadLedger(){
 const log = (t, c='') => { const el=$('#log'); el.innerHTML += `<span class="${c}">${t}</span>\n`; el.scrollTop = el.scrollHeight; };
 const b64d = s => JSON.parse(atob(s.replace(/-/g,'+').replace(/_/g,'/')));
 const b64e = o => btoa(JSON.stringify(o, Object.keys(o).sort())).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-const AGENT = 'agent-dashboard-01';
+const AGENT = 'agent-dashboard-02';
 
 async function runDemo(){
   $('#run').disabled = true; $('#log').innerHTML = '';
-  log('=== 1. ask a known field ===', 'b');
-  let [s,b] = await j('POST','/ask',{product_id:'sku-001',field:'warranty_months'});
-  log(`  ${JSON.stringify(b.answer)}`, 'g');
-  log('=== 2. ask a missing field ===', 'b');
-  [s,b] = await j('POST','/ask',{product_id:'sku-002',field:'warranty_months'});
-  log(`  answer: ${b.answer}  →  AGENT: cannot decide, escalating to human instead of guessing`, 'y');
-  log('=== 3. mandate + quote + checkout ===', 'b');
+  const stats = {assumptive_decisions:0, escalations:0};
+  const want = $('#q').value || 'water bottle', budget = 100000;
+  log(`=== 1. intent: "${want}" under ₹${inr(budget)}, color must be KNOWN ===`, 'b');
+  const [,S] = await j('GET','/search?q='+encodeURIComponent(want)+'&limit=40');
+  log(`  search → ${S.hits.length} real ids`);
+  let chosen=null, stalePid=null, stalePrice=0; const dropped={};
+  for (const h of S.hits) {
+    const [,p] = await j('GET','/product/'+h.product_id); const f=p.fields;
+    if (!p.sellable) { dropped[p.unsellable_reason]=(dropped[p.unsellable_reason]||0)+1; if(!stalePid && p.unsellable_reason==='PRICE_STALE'){stalePid=h.product_id; stalePrice=f.sell_price_paise.value;} continue; }
+    if (f.sell_price_paise.value > budget) { dropped.OVER_BUDGET=(dropped.OVER_BUDGET||0)+1; continue; }
+    if (!f['spec.color']) { dropped.MUST_FIELD_UNKNOWN=(dropped.MUST_FIELD_UNKNOWN||0)+1; continue; }
+    chosen=[h.product_id,f]; break;
+  }
+  log(`  dropped: ${JSON.stringify(dropped)}`, 'y');
+  if (!chosen) { stats.escalations++; log('  ESCALATE: nothing fully known within budget; asking the human instead of guessing', 'r'); log(`STATS ${JSON.stringify(stats)}`); $('#run').disabled=false; return; }
+  const [pid,f]=chosen;
+  log(`  chosen ${pid}: ${f.name.value.slice(0,60)}`, 'g');
+  log(`    sell ₹${inr(f.sell_price_paise.value)} (${f.sell_price_paise.source} @ ${f.sell_price_paise.as_of.slice(0,10)})  list ${f.list_price_paise?'₹'+inr(f.list_price_paise.value):'unknown'} (informational)  color ${f['spec.color'].value}  stock ${f.stock.value}`);
+  log('=== 2. mandate + signed quote + checkout ===', 'b');
   const [,m] = await j('POST','/mandate',{agent_id:AGENT,max_per_txn_paise:150000,max_per_day_paise:200000});
-  log(`  mandate ${m.mandate.mandate_id}: per-txn ₹${inr(150000)}, daily ₹${inr(200000)}`);
-  const [,q] = await j('POST','/quote',{product_id:'sku-004',qty:1});
-  log(`  quote ${q.quote.quote_id}: ₹${inr(q.quote.amount_paise)} from ${q.quote.price_source}, expires in 120 s`);
-  [s,b] = await j('POST','/checkout',{quote_token:q.quote_token,mandate_token:m.mandate_token},{'X-Agent-Id':AGENT});
-  log(s===200 ? `  APPROVED → ${b.razorpay_order_id} (${b.razorpay_mode})` : `  ${JSON.stringify(b.detail)}`, s===200?'g':'r');
-  log('=== 4. tamper the quote amount ===', 'b');
+  const [,q] = await j('POST','/quote',{product_id:pid,qty:1});
+  let [s,b] = await j('POST','/checkout',{quote_token:q.quote_token,mandate_token:m.mandate_token},{'X-Agent-Id':AGENT});
+  log(s===200 ? `  APPROVED → ${b.razorpay_order_id} (${b.razorpay_mode}) ₹${inr(b.amount_paise)}` : `  ${JSON.stringify(b.detail)}`, s===200?'g':'r');
+  log('=== 3. stale price → refused → merchant confirms → ok ===', 'b');
+  if (stalePid) {
+    [s,b] = await j('POST','/quote',{product_id:stalePid,qty:1}); log(`  HTTP ${s} ${b.detail.rule}`, 'r'); stats.escalations++;
+    [s,b] = await j('POST','/merchant/confirm_price',{product_id:stalePid,sell_price_paise:stalePrice,stock_qty:10},{'X-Merchant-Key':'demo-merchant'});
+    log(`  merchant confirmed → sellable=${b.sellable}`, 'g');
+    [s,b] = await j('POST','/quote',{product_id:stalePid,qty:1}); log(`  HTTP ${s} quote from ${b.quote.price_source}`, 'g');
+  } else log('  (no stale candidate in this search)');
+  log('=== 4. tamper quote amount ===', 'b');
   const [body,sig] = q.quote_token.split('.'); const p = b64d(body); p.amount_paise = 1;
   [s,b] = await j('POST','/checkout',{quote_token:b64e(p)+'.'+sig,mandate_token:m.mandate_token},{'X-Agent-Id':AGENT});
-  log(`  HTTP ${s} ${b.detail.rule}: ${b.detail.reason}`, 'r');
-  log('=== 5. second purchase over daily cap ===', 'b');
-  const [,q2] = await j('POST','/quote',{product_id:'sku-004',qty:1});
-  [s,b] = await j('POST','/checkout',{quote_token:q2.quote_token,mandate_token:m.mandate_token},{'X-Agent-Id':AGENT});
-  log(`  HTTP ${s} ${b.detail.rule}: ${b.detail.reason} (escalated: ${b.detail.escalated_to_human})`, 'r');
-  log('=== 5b. no X-Agent-Id ===', 'b');
-  [s,b] = await j('POST','/checkout',{quote_token:q2.quote_token,mandate_token:m.mandate_token});
   log(`  HTTP ${s} ${b.detail.rule}`, 'r');
-  log('=== 6. verify chain ===', 'b');
-  [s,b] = await j('GET','/ledger/verify');
-  log(`  ${JSON.stringify(b)}`, b.ok?'g':'r');
-  await loadLedger(); $('#run').disabled = false;
+  log('=== 5. over daily cap ===', 'b');
+  const [,q2] = await j('POST','/quote',{product_id:pid,qty:1});
+  [s,b] = await j('POST','/checkout',{quote_token:q2.quote_token,mandate_token:m.mandate_token},{'X-Agent-Id':AGENT});
+  log(`  HTTP ${s} ${b.detail.rule} escalated=${b.detail.escalated_to_human}`, 'r'); if (b.detail.escalated_to_human) stats.escalations++;
+  log('=== 6. no agent id, verify chain ===', 'b');
+  [s,b] = await j('POST','/checkout',{quote_token:q2.quote_token,mandate_token:m.mandate_token}); log(`  HTTP ${s} ${b.detail.rule}`, 'r');
+  [s,b] = await j('GET','/ledger/verify'); log(`  ${JSON.stringify(b)}`, b.ok?'g':'r');
+  log(`STATS ${JSON.stringify(stats)}`, 'g');
+  await Promise.all([loadLedger(), loadQuality(), doSearch()]); $('#run').disabled = false;
 }
-$('#run').onclick = runDemo;
-$('#reset').onclick = () => $('#log').innerHTML = '';
-loadCatalog(); loadLedger(); setInterval(loadLedger, 4000);
+$('#run').onclick = runDemo; $('#clear').onclick = () => $('#log').innerHTML = ''; $('#go').onclick = doSearch;
+$('#q').addEventListener('keydown', e => { if (e.key==='Enter') doSearch(); });
+loadQuality(); loadLedger(); doSearch(); setInterval(loadLedger, 5000);
 </script>
 </body>
 </html>

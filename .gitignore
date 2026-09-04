@@ -1,4 +1,8 @@
 .env
 ledger.db
+catalog.db
+data/
 __pycache__/
 *.pyc
+.pytest_cache/
+tests/.tmp/

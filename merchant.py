@@ -1,10 +1,11 @@
-"""Verifiable storefront for AI buyers.
+"""Verifiable storefront for AI buyers, v2: real (dirty) Flipkart catalog behind honest rules.
 
 Four guarantees:
   1. Answers only from catalog rows, each field with source + as_of. Missing -> "unknown".
   2. Prices are issued as signed, time-limited quote tokens, re-verified at checkout.
   3. Spend is bounded by a signed mandate (per-txn cap, daily cap, expiry). Breach -> refused + escalated.
   4. Every step appended to a hash-chained ledger.
+v2 adds sellability gates (no price, conflicting price, stale price, no stock) and deterministic search.
 """
 import base64
 import hashlib
@@ -16,10 +17,11 @@ import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+import catalog
 import ledger
 
 load_dotenv(Path(__file__).with_name(".env"))
@@ -28,9 +30,9 @@ RZP_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RZP_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 STUB = "PASTE_ME" in RZP_ID or "PASTE_ME" in RZP_SECRET or not RZP_ID
 QUOTE_TTL_S = 120
+HERE = Path(__file__).parent
 
-CATALOG = json.loads(Path(__file__).with_name("catalog.json").read_text())["products"]
-app = FastAPI(title="Verifiable Storefront")
+app = FastAPI(title="Verifiable Storefront v2")
 
 # ---------- signing helpers ----------
 
@@ -62,25 +64,33 @@ def verify_token(token: str) -> dict | None:
 
 @app.get("/", include_in_schema=False)
 def dashboard():
-    return FileResponse(Path(__file__).with_name("dashboard.html"))
+    return FileResponse(HERE / "dashboard.html")
 
 
 # ---------- catalog: answer only what we know ----------
 
 @app.get("/catalog")
-def catalog():
-    ledger.append("catalog", {}, "SERVE_ALL", "OK")
-    return {"products": CATALOG, "field_format": "{value, source, as_of} or absent => unknown"}
+def catalog_page(offset: int = 0, limit: int = Query(50, le=200)):
+    ledger.append("catalog", {"offset": offset, "limit": limit}, "SERVE_PAGE", "OK")
+    return {"products": catalog.page(offset, limit), "field_format": "{value, source, as_of} or absent => unknown"}
+
+
+@app.get("/search")
+def search(q: str, limit: int = Query(20, le=100)):
+    """Deterministic token match on name/brand/category. Returns real ids with what matched, or an empty list."""
+    hits = catalog.search(q, limit)
+    ledger.append("search", {"q": q}, "TOKEN_MATCH", f"{len(hits)}_HITS")
+    return {"q": q, "hits": hits, "note": "substring match on name, brand, category only; nothing inferred"}
 
 
 @app.get("/product/{product_id}")
 def product(product_id: str):
-    p = CATALOG.get(product_id)
+    p = catalog.get(product_id)
     if p is None:
         ledger.append("product", {"product_id": product_id}, "UNKNOWN_PRODUCT", "404")
         raise HTTPException(404, {"answer": "unknown", "reason": "no such product_id in catalog"})
     ledger.append("product", {"product_id": product_id}, "SERVE_ROW", "OK")
-    return {"product_id": product_id, "fields": p}
+    return {"product_id": product_id, **p}
 
 
 class Ask(BaseModel):
@@ -90,14 +100,21 @@ class Ask(BaseModel):
 
 @app.post("/ask")
 def ask(q: Ask):
-    """The anti-hallucination endpoint: exact field or 'unknown'. Never inferred, never defaulted."""
-    p = CATALOG.get(q.product_id)
-    if p is None or q.field not in p:
+    """The anti-hallucination endpoint: exact field or 'unknown'. Never inferred from description or name."""
+    p = catalog.get(q.product_id)
+    if p is None or q.field not in p["fields"]:
         ledger.append("ask", q.model_dump(), "FIELD_ABSENT", "UNKNOWN")
         return {"product_id": q.product_id, "field": q.field, "answer": "unknown",
-                "reason": "field not present in catalog row; merchant does not guess"}
+                "reason": "field not present on record; merchant does not guess"}
     ledger.append("ask", q.model_dump(), "FIELD_PRESENT", "ANSWERED")
-    return {"product_id": q.product_id, "field": q.field, "answer": p[q.field]}
+    return {"product_id": q.product_id, "field": q.field, "answer": p["fields"][q.field]}
+
+
+@app.get("/quality")
+def quality():
+    rep_path = HERE / "quality_report.json"
+    rep = json.loads(rep_path.read_text()) if rep_path.exists() else {"error": "run ingest.py first"}
+    return {"report": rep, "live_coverage": catalog.coverage(), "max_price_age_days": catalog.MAX_PRICE_AGE_DAYS}
 
 
 # ---------- quotes: a token, not a number ----------
@@ -109,29 +126,63 @@ class QuoteReq(BaseModel):
 
 @app.post("/quote")
 def quote(r: QuoteReq):
-    p = CATALOG.get(r.product_id)
-    if p is None or "price_paise" not in p:
-        ledger.append("quote", r.model_dump(), "NO_PRICE_ON_RECORD", "REFUSED")
-        raise HTTPException(409, {"answer": "unknown", "reason": "no price on record; cannot quote"})
-    if r.qty < 1 or r.qty > p.get("stock", {"value": 0})["value"]:
+    p = catalog.get(r.product_id)
+    if p is None:
+        ledger.append("quote", r.model_dump(), "UNKNOWN_PRODUCT", "REFUSED")
+        raise HTTPException(404, {"answer": "unknown", "reason": "no such product_id"})
+    if not p["sellable"]:
+        rule = f"REFUSED_{p['unsellable_reason']}"
+        ledger.append("quote", r.model_dump(), rule, "REFUSED")
+        raise HTTPException(409, {"decision": "REFUSED", "rule": rule, "reason": _explain(p),
+                                  "fix": "merchant must confirm via POST /merchant/confirm_price" if p["unsellable_reason"] in ("PRICE_STALE", "PRICE_CONFLICT", "NO_STOCK") else None})
+    f = p["fields"]
+    if r.qty < 1 or r.qty > f["stock"]["value"]:
         ledger.append("quote", r.model_dump(), "INSUFFICIENT_STOCK", "REFUSED")
-        raise HTTPException(409, {"reason": "qty exceeds stock on record", "stock": p.get("stock")})
+        raise HTTPException(409, {"decision": "REFUSED", "rule": "REFUSED_INSUFFICIENT_STOCK", "stock": f["stock"]})
     now = int(time.time())
+    sell = f["sell_price_paise"]
     payload = {
-        "quote_id": uuid.uuid4().hex[:12],
-        "product_id": r.product_id,
-        "qty": r.qty,
-        "unit_price_paise": p["price_paise"]["value"],
-        "amount_paise": p["price_paise"]["value"] * r.qty,
-        "price_source": p["price_paise"]["source"],
-        "price_as_of": p["price_paise"]["as_of"],
-        "issued_at": now,
-        "expires_at": now + QUOTE_TTL_S,
+        "quote_id": uuid.uuid4().hex[:12], "product_id": r.product_id, "qty": r.qty,
+        "sell_price_paise": sell["value"], "amount_paise": sell["value"] * r.qty,
+        "list_price_paise": f.get("list_price_paise", {}).get("value"),
+        "price_source": sell["source"], "price_as_of": sell["as_of"],
+        "issued_at": now, "expires_at": now + QUOTE_TTL_S,
     }
-    tok = sign(payload)
     ledger.append("quote", {**r.model_dump(), "quote_id": payload["quote_id"], "amount_paise": payload["amount_paise"]},
-                  "PRICE_ON_RECORD", "ISSUED")
-    return {"quote_token": tok, "quote": payload}
+                  "SELLABLE_PRICE_ON_RECORD", "ISSUED")
+    return {"quote_token": sign(payload), "quote": payload,
+            "note": "amount is computed from sell_price_paise only; list_price_paise is informational"}
+
+
+def _explain(p: dict) -> str:
+    return {
+        "NO_PRICE": "no sell price on record",
+        "PRICE_CONFLICT": f"crawl holds conflicting prices {p['conflicts']}; merchant has not resolved",
+        "PRICE_STALE": f"price as_of {p['fields'].get('sell_price_paise', {}).get('as_of')} is older than {catalog.MAX_PRICE_AGE_DAYS} days",
+        "NO_STOCK": "no stock source on record; merchant does not assume availability",
+        "OUT_OF_STOCK": "stock snapshot says 0",
+    }.get(p["unsellable_reason"], p["unsellable_reason"])
+
+
+# ---------- merchant actions ----------
+
+class ConfirmReq(BaseModel):
+    product_id: str
+    sell_price_paise: int
+    stock_qty: int | None = None
+
+
+@app.post("/merchant/confirm_price")
+def confirm_price(c: ConfirmReq, x_merchant_key: str | None = Header(default=None)):
+    """A human on the merchant side re-confirms today's price (and optionally stock). Clears stale/conflict gates."""
+    if x_merchant_key != os.environ.get("MERCHANT_KEY", "demo-merchant"):
+        raise HTTPException(401, {"reason": "X-Merchant-Key required"})
+    ok = catalog.confirm_price(c.product_id, c.sell_price_paise, c.stock_qty, "merchant:confirm_endpoint")
+    if not ok:
+        raise HTTPException(404, {"reason": "no such product_id"})
+    ledger.append("merchant_confirm", c.model_dump(), "HUMAN_CONFIRMED_PRICE", "APPLIED")
+    sellable, reason = catalog.sellability(c.product_id)
+    return {"product_id": c.product_id, "sellable": sellable, "unsellable_reason": reason}
 
 
 # ---------- mandates: the human sets the caps, the agent cannot edit them ----------
@@ -145,7 +196,6 @@ class MandateReq(BaseModel):
 
 @app.post("/mandate")
 def mandate(m: MandateReq):
-    """Simulates the human principal authorising an agent. Returns a signed mandate token."""
     payload = {**m.model_dump(), "mandate_id": uuid.uuid4().hex[:12], "expires_at": int(time.time()) + m.valid_for_s}
     ledger.append("mandate", payload, "HUMAN_AUTHORISED", "ISSUED")
     return {"mandate_token": sign(payload), "mandate": payload}
@@ -168,10 +218,8 @@ def _razorpay_order(amount_paise: int, quote_id: str, agent_id: str) -> tuple[st
         return "order_STUB" + uuid.uuid4().hex[:10], "stub"
     import razorpay
     client = razorpay.Client(auth=(RZP_ID, RZP_SECRET))
-    order = client.order.create({
-        "amount": amount_paise, "currency": "INR", "receipt": quote_id,
-        "notes": {"agent_id": agent_id, "quote_id": quote_id},
-    })
+    order = client.order.create({"amount": amount_paise, "currency": "INR", "receipt": quote_id,
+                                 "notes": {"agent_id": agent_id, "quote_id": quote_id}})
     return order["id"], "razorpay_test"
 
 
@@ -215,8 +263,9 @@ def checkout(c: CheckoutReq, x_agent_id: str | None = Header(default=None)):
 # ---------- ledger ----------
 
 @app.get("/ledger")
-def ledger_dump():
-    return {"rows": ledger.rows()}
+def ledger_dump(limit: int = Query(200, le=2000)):
+    rows = ledger.rows()
+    return {"rows": rows[-limit:], "total": len(rows)}
 
 
 @app.get("/ledger/verify")

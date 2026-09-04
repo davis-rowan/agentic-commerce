@@ -2,3 +2,7 @@ fastapi
 uvicorn
 razorpay
 python-dotenv
+pandas
+kaggle
+pytest
+httpx
